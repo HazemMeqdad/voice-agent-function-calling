@@ -15,19 +15,22 @@ import logging
 class ColorFormatter(logging.Formatter):
     """Custom formatter to color-code log messages based on their content."""
     
-    # ANSI escape codes for colors
-    CYAN = "\x1b[36;20m"      # User Speaking/STT
-    GREEN = "\x1b[32;20m"     # Agent Thinking/LLM/Function
-    MAGENTA = "\x1b[35;20m"   # Agent Speaking/TTS
-    WHITE = "\x1b[0m"     # Default/Latency
-    RESET = "\x1b[0m"
+    # ANSI escape codes for colors - using accessible palette
+    COLORS = {
+        'RESET': '\033[0m',
+        'WHITE': '\033[38;5;231m',    # Default text color
+        'BLUE': '\033[38;5;116m',    # User/STT messages
+        'GREEN': '\033[38;5;114m',    # Agent speaking/TTS
+        'VIOLET': '\033[38;5;183m',   # Function calls
+        'YELLOW': '\033[38;5;186m',   # Latency info
+    }
     
     def format(self, record):
         # Default format string
         format_str = '%(asctime)s.%(msecs)03d %(levelname)s: %(message)s'
         
         # Default to white
-        color = self.WHITE
+        color = self.COLORS['WHITE']
         
         msg = str(record.msg).lower()
         
@@ -41,31 +44,31 @@ class ColorFormatter(logging.Formatter):
                 # User/STT related messages
                 if (data.get("type") in ["userstartedspeaking", "endofthought"] or
                     (data.get("type") == "conversationtext" and data.get("role") == "user")):
-                    color = self.CYAN
+                    color = self.COLORS['BLUE']
                 
                 # Agent speaking/TTS related messages
-                elif (data.get("type") in ["agentstartedspeak", "agentaudiodone", "agentstartedspeak"] or
+                elif (data.get("type") in ["agentstartedspeaking", "agentaudiodone"] or
                       (data.get("type") == "conversationtext" and data.get("role") == "assistant")):
-                    color = self.GREEN
+                    color = self.COLORS['GREEN']
                 
                 # Agent thinking/function calling
                 elif data.get("type") in ["functioncalling", "functioncallrequest"]:
-                    color = self.MAGENTA
+                    color = self.COLORS['VIOLET']
                 
             except (json.JSONDecodeError, KeyError):
                 pass
         
         # Non-JSON messages
         else:
-            if "function response" in msg or "parameters" in msg:
-                color = self.MAGENTA
+            if any(phrase in msg for phrase in ["function response", "parameters", "function call"]):
+                color = self.COLORS['VIOLET']
             elif "injectagentmessage" in msg:
-                color = self.GREEN
-            elif "decision latency" in msg or "function execution latency" in msg:
-                color = self.WHITE
+                color = self.COLORS['GREEN']
+            elif any(phrase in msg for phrase in ["decision latency", "function execution latency"]):
+                color = self.COLORS['YELLOW']
         
         # Apply the color to the format string
-        formatter = logging.Formatter(color + format_str + self.RESET, datefmt='%H:%M:%S')
+        formatter = logging.Formatter(color + format_str + self.COLORS['RESET'], datefmt='%H:%M:%S')
         return formatter.format(record)
 
 # Configure logging
@@ -179,12 +182,8 @@ SETTINGS = {
     "agent": {
         "listen": {"model": "nova-2"},
         "think": {
-            # "provider": {"type": "groq"},
-            # "model": "llama3-70b-8192",
             "provider": {"type": "open_ai"},
             "model": "gpt-4o-mini",
-            # "provider": {"type": "anthropic"},
-            # "model": "claude-3-haiku-20240307",
             "instructions": PROMPT_TEMPLATE,
             "functions": FUNCTION_DEFINITIONS,
         },
